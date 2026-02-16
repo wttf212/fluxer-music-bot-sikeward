@@ -35,55 +35,84 @@ if _bgutil_path:
 else:
     print("[main] Warning: bgutil-pot binary not found, PO tokens will not be generated")
 
-from rest_client import FluxerREST
-from gateway import FluxerGateway
+import fluxer
+from fluxer.gateway import GatewayPayload
+from fluxer.enums import GatewayOpcode, Intents
 from audio_player import AudioPlayer
 from track_queue import TrackQueue
-from commands import CommandHandler
 
 
-async def main():
+class MusicBot(fluxer.Bot):
+    def __init__(self, config: dict):
+        intents = Intents.default() | Intents.MESSAGE_CONTENT | Intents.GUILD_VOICE_STATES
+        super().__init__(command_prefix=config.get("prefix", "!"), intents=intents)
+        self.player = AudioPlayer(config)
+        self.queue = TrackQueue()
+        self.voice_states: dict[str, str] = {}  # user_id -> channel_id
+        self.current_guild_id: str | None = None
+        self.in_voice = False
+        self.voice_ready = asyncio.Event()
+
+    async def send_voice_state_update(self, guild_id: str, channel_id: str | None):
+        """Send opcode 4 to join/leave a voice channel."""
+        payload = GatewayPayload(
+            op=GatewayOpcode.VOICE_STATE_UPDATE,
+            d={
+                "guild_id": guild_id,
+                "channel_id": channel_id,
+                "self_mute": False,
+                "self_deaf": True,
+            },
+        )
+        await self._gateway._send(payload)
+
+
+def main():
     with open("config.yaml", "r") as f:
         config = yaml.safe_load(f)
 
     token = config["bot_token"]
-    prefix = config.get("prefix", "!")
+    bot = MusicBot(config)
 
-    rest = FluxerREST(token)
-    gateway = FluxerGateway(token, rest)
-    player = AudioPlayer(config)
-    track_queue = TrackQueue()
-    handler = CommandHandler(prefix, gateway, rest, player, track_queue)
-    handler.register()
+    # Register commands
+    from commands import register_commands
+    register_commands(bot)
 
-    # When we receive VOICE_SERVER_UPDATE, connect the audio player to LiveKit
+    @bot.event
+    async def on_ready():
+        print(f"[main] Ready as {bot.user}")
+
+    @bot.on("voice_state_update")
+    async def on_voice_state_update(data: dict):
+        user_id = data.get("user_id")
+        channel_id = data.get("channel_id")
+        if user_id:
+            if channel_id:
+                bot.voice_states[str(user_id)] = str(channel_id)
+            else:
+                bot.voice_states.pop(str(user_id), None)
+
+    @bot.on("voice_server_update")
     async def on_voice_server_update(data: dict):
         endpoint = data.get("endpoint")
         voice_token = data.get("token")
         if endpoint and voice_token:
             try:
-                await player.connect_to_voice(endpoint, voice_token)
-                handler._in_voice = True
-                handler._voice_ready.set()
+                await bot.player.connect_to_voice(endpoint, voice_token)
+                bot.in_voice = True
+                bot.voice_ready.set()
                 print(f"[main] Voice connected to {endpoint}")
             except Exception as e:
                 print(f"[main] Voice connect error: {e}")
-                handler._voice_ready.set()  # unblock waiter even on error
-
-    gateway.on("VOICE_SERVER_UPDATE", on_voice_server_update)
+                bot.voice_ready.set()  # unblock waiter even on error
 
     try:
-        await gateway.connect()
-    except KeyboardInterrupt:
-        pass
+        bot.run(token)
     finally:
-        await player.disconnect()
-        await gateway.close()
-        await rest.close()
         if _bgutil_proc and _bgutil_proc.poll() is None:
             _bgutil_proc.terminate()
             print("[main] bgutil-pot server stopped")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

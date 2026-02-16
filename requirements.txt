@@ -1,8 +1,7 @@
-websockets
+fluxer.py @ git+https://github.com/akarealemil/fluxer.py.git
 livekit
 yt-dlp[default]
 yt-dlp-ejs
 pyyaml
-aiohttp
 numpy
 imageio-ffmpeg
