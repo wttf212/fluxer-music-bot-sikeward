@@ -6,8 +6,8 @@ A music bot for [Fluxer.app](https://fluxer.app) that plays YouTube audio in voi
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/wttf212/fluxer-music-bot.git
-cd fluxer-music-bot
+git clone https://github.com/wttf212/fluxer-music-bot-sikeward.git
+cd fluxer-music-bot-sikeward
 ```
 
 ### 2. Run the setup script
@@ -49,10 +49,8 @@ python main.py
 |---|---|
 | `!play <url or search>` | Play a YouTube URL or search query |
 | `!skip` | Skip the current track |
-| `!stop` | Stop playback and clear queue |
+| `!stop` | Stop playback, clear queue, and leave voice |
 | `!queue` | Show the current queue |
-| `!join` | Join your voice channel |
-| `!leave` | Leave the voice channel |
 | `!shutdown` | Safely shut down the bot |
 
 ## How It Works
@@ -74,6 +72,7 @@ PO tokens are generated automatically on each request — no manual token manage
 ## Prerequisites
 
 - **Python 3.10+**
+- **Git** — required to install the [fluxer.py](https://github.com/akarealemil/fluxer.py) library from GitHub
 - **ffmpeg** — install via your package manager or `pip install imageio-ffmpeg`
 
 Deno and bgutil-pot are installed automatically by the setup script.
@@ -91,6 +90,7 @@ Set `debug: true` in `config.yaml` for verbose logging.
 
 ## Credits
 
+- [fluxer.py](https://github.com/akarealemil/fluxer.py) — Fluxer API wrapper
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) — YouTube audio extraction
 - [bgutil-ytdlp-pot-provider-rs](https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs) by [jim60105](https://github.com/jim60105) — PO token generation (Rust implementation using [rustypipe-botguard](https://crates.io/crates/rustypipe-botguard))
 - [Deno](https://deno.land) — JavaScript runtime
