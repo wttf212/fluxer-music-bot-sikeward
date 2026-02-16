@@ -1,6 +1,7 @@
 bot_token: "YOUR_BOT_TOKEN_HERE"
 prefix: "!"
 debug: false
+owner_id: "YOUR_DISCORD_USER_ID"
 
 youtube:
   # PO tokens are generated automatically by bgutil-pot (no manual config needed)

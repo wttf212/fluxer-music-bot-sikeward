@@ -73,6 +73,7 @@ def main():
 
     token = config["bot_token"]
     bot = MusicBot(config)
+    bot.config = config
 
     # Register commands
     from commands import register_commands
