@@ -1,0 +1,15 @@
+bot_token: "YOUR_BOT_TOKEN_HERE"
+prefix: "!"
+debug: false
+
+youtube:
+  # PO tokens are generated automatically by bgutil-pot (no manual config needed)
+  # web = PO token auth + JS signatures (via deno), android_vr = audio-only formats
+  client: "web,android_vr"
+
+ffmpeg_path: "ffmpeg"
+
+audio:
+  sample_rate: 48000
+  channels: 2
+  frame_duration_ms: 20

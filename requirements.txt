@@ -1,0 +1,8 @@
+websockets
+livekit
+yt-dlp[default]
+yt-dlp-ejs
+pyyaml
+aiohttp
+numpy
+imageio-ffmpeg
