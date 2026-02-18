@@ -1,4 +1,4 @@
-fluxer.py @ git+https://github.com/akarealemil/fluxer.py.git
+fluxer.py>=0.2.0
 livekit
 yt-dlp[default]
 yt-dlp-ejs

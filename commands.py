@@ -370,14 +370,15 @@ def register_commands(bot):
 
         guild_id = str(message.guild_id) if message.guild_id else None
         await message.reply("Shutting down...")
+        if bot._auto_next_task and not bot._auto_next_task.done():
+            bot._auto_next_task.cancel()
+            bot._auto_next_task = None
         bot.player.stop_playback()
         bot.queue.clear()
         if guild_id:
             await bot.send_voice_state_update(guild_id, None)
         await bot.player.disconnect()
-        await bot.close()
         print("[main] Shutdown requested via command.")
-        await asyncio.sleep(0.5)
         os._exit(0)
 
 
