@@ -1,0 +1,16 @@
+services:
+  fluxer-music-bot:
+    build:
+      # Builds directly from GitHub — no need to clone the repo manually.
+      # To build from a local clone instead, change this to: context: .
+      context: https://github.com/wttf212/fluxer-music-bot-sikeward.git
+    image: fluxer-music-bot:latest
+    restart: unless-stopped
+    volumes:
+      # config.yaml must exist in the same directory as this file
+      - ./config.yaml:/app/config.yaml:ro
+      # Guild settings persist across container restarts in a named volume
+      - bot_data:/data
+
+volumes:
+  bot_data:

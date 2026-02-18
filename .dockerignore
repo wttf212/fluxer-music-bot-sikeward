@@ -1,0 +1,29 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Secrets and local config
+config.yaml
+guild_settings.json
+
+# Platform binaries (Dockerfile downloads the correct Linux binary)
+bgutil-pot.exe
+bgutil-pot
+
+# Git and IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+_test_*.py
+
+# Claude
+.claude/

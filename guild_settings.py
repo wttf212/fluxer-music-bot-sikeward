@@ -1,7 +1,10 @@
 import json
 import os
 
-SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "guild_settings.json")
+SETTINGS_FILE = os.environ.get(
+    "GUILD_SETTINGS_FILE",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "guild_settings.json")
+)
 
 
 def load_settings() -> dict:

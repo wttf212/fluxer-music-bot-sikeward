@@ -2,7 +2,43 @@
 
 A music bot for [Fluxer.app](https://fluxer.app) that plays YouTube audio in voice channels.
 
-## Quick Start
+## Docker
+
+> Run the bot without installing Python, Deno, or ffmpeg — Docker handles everything.
+
+### 1. Get the two required files
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wttf212/fluxer-music-bot-sikeward/main/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/wttf212/fluxer-music-bot-sikeward/main/config.example.yaml -o config.yaml
+```
+
+### 2. Fill in your config
+
+Edit `config.yaml` — at minimum set `bot_token` and `owner_id`.
+
+### 3. Start the bot
+
+```bash
+docker compose up -d --build
+```
+
+Docker will automatically clone this repo, install all dependencies, and start the bot. The first build takes a few minutes.
+
+### Useful commands
+
+```bash
+docker compose logs -f          # Stream logs
+docker compose down             # Stop the bot
+docker compose build --no-cache # Rebuild after an upstream update
+docker compose up -d            # Start again after rebuild
+```
+
+Guild settings are stored in a named Docker volume (`bot_data`) and survive container restarts and rebuilds.
+
+---
+
+## Quick Start (without Docker)
 
 ### 1. Clone the repo
 ```bash
