@@ -28,10 +28,9 @@ Docker will automatically clone this repo, install all dependencies, and start t
 ### Useful commands
 
 ```bash
-docker compose logs -f          # Stream logs
-docker compose down             # Stop the bot
-docker compose build --no-cache # Rebuild after an upstream update
-docker compose up -d            # Start again after rebuild
+docker compose logs -f                        # Stream logs
+docker compose down                           # Stop the bot
+docker compose build --no-cache && docker compose up -d  # Update to latest version
 ```
 
 Guild settings are stored in a named Docker volume (`bot_data`) and survive container restarts and rebuilds.
