@@ -113,6 +113,61 @@ def get_audio_url(query: str, client: str, debug: bool = False) -> dict:
         return {"url": info["url"], "title": info.get("title", "Unknown"), "http_headers": http_headers}
 
 
+def is_playlist_url(query: str) -> bool:
+    """Check if a URL points to a playlist (YouTube or SoundCloud)."""
+    if not query.startswith(("http://", "https://")):
+        return False
+    # YouTube playlists contain list= parameter
+    if _is_youtube(query) and "list=" in query:
+        return True
+    # SoundCloud sets (playlists)
+    if "soundcloud.com" in query and "/sets/" in query:
+        return True
+    return False
+
+
+def extract_playlist_info(query: str, client: str) -> dict:
+    """Extract playlist title and track list using yt-dlp (metadata only, no streams).
+
+    Returns {"title": str, "tracks": [{"url": str, "title": str}, ...]}
+    """
+    ydl_opts = {
+        "extract_flat": "in_playlist",  # resolve each entry but don't fetch streams
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": False,            # allow playlist extraction
+    }
+
+    if _is_youtube(query):
+        yt_args = {"player_client": [c.strip() for c in client.split(",")]}
+        ydl_opts["extractor_args"] = {"youtube": yt_args}
+
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(query, download=False)
+
+    # entries may be a lazy generator; materialize it
+    raw_entries = info.get("entries", [])
+    entries = list(raw_entries) if raw_entries else []
+
+    tracks = []
+    for entry in entries:
+        if entry is None:
+            continue
+        url = entry.get("url") or entry.get("webpage_url") or entry.get("id", "")
+        # For YouTube flat extraction, url may be just the video ID
+        if _is_youtube(query) and not url.startswith("http"):
+            url = f"https://www.youtube.com/watch?v={url}"
+        tracks.append({
+            "url": url,
+            "title": entry.get("title", "Unknown"),
+        })
+
+    return {
+        "title": info.get("title", "Unknown Playlist"),
+        "tracks": tracks,
+    }
+
+
 class AudioPlayer:
     def __init__(self, config: dict):
         self._config = config
@@ -325,7 +380,7 @@ class AudioPlayer:
 
     async def wait_for_playback(self):
         """Wait for the current track to finish."""
-        if self._play_task:
+        if self._play_task and not self._play_task.done():
             await self._play_task
 
     async def disconnect(self):

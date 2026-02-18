@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 import yaml
+from typing import Any
 
 # Load bgutil PO token provider plugin for yt-dlp (must be done before yt-dlp is imported)
 # This enables dynamic PO token generation to prevent YouTube IP bans
@@ -44,7 +45,7 @@ from track_queue import TrackQueue
 
 class MusicBot(fluxer.Bot):
     def __init__(self, config: dict):
-        intents = Intents.default() | Intents.MESSAGE_CONTENT | Intents.GUILD_VOICE_STATES
+        intents = Intents.default() | Intents.MESSAGE_CONTENT | Intents.GUILD_VOICE_STATES | Intents.GUILD_MESSAGE_REACTIONS
         super().__init__(command_prefix=config.get("prefix", "!"), intents=intents)
         self.player = AudioPlayer(config)
         self.queue = TrackQueue()
@@ -52,6 +53,21 @@ class MusicBot(fluxer.Bot):
         self.current_guild_id: str | None = None
         self.in_voice = False
         self.voice_ready = asyncio.Event()
+        self.pending_playlists: dict = {}  # message_id -> playlist info
+        self._auto_next_task: asyncio.Task | None = None  # prevent duplicate chains
+
+    async def _dispatch(self, event_name: str, data: Any) -> None:
+        """Intercept GUILD_CREATE to capture initial voice states before fluxer processes it."""
+        if event_name == "GUILD_CREATE" and isinstance(data, dict):
+            loaded = 0
+            for vs in data.get("voice_states", []):
+                user_id = vs.get("user_id")
+                channel_id = vs.get("channel_id")
+                if user_id and channel_id:
+                    self.voice_states[str(user_id)] = str(channel_id)
+                    loaded += 1
+            print(f"[main] Loaded {loaded} voice states for guild {data.get('id')}")
+        await super()._dispatch(event_name, data)
 
     async def send_voice_state_update(self, guild_id: str, channel_id: str | None):
         """Send opcode 4 to join/leave a voice channel."""
@@ -76,12 +92,16 @@ def main():
     bot.config = config
 
     # Register commands
-    from commands import register_commands
+    from commands import register_commands, handle_playlist_reaction
     register_commands(bot)
 
     @bot.event
     async def on_ready():
         print(f"[main] Ready as {bot.user}")
+
+    @bot.on("message_reaction_add")
+    async def on_message_reaction_add(data: dict):
+        await handle_playlist_reaction(bot, data)
 
     @bot.on("voice_state_update")
     async def on_voice_state_update(data: dict):
