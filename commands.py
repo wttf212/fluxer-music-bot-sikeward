@@ -381,9 +381,24 @@ def register_commands(bot):
         print("[main] Shutdown requested via command.")
         os._exit(0)
 
+    @bot.command()
+    async def help(message: Message):
+        p = bot.command_prefix
+        await message.reply(
+            f"**Available commands:**\n"
+            f"`{p}play <url or search>` — Play a track or playlist (join voice first)\n"
+            f"`{p}skip` — Skip the current track\n"
+            f"`{p}stop` — Stop playback, clear queue, and leave voice\n"
+            f"`{p}queue` — Show the current queue\n"
+            f"`{p}loadall` — Load all remaining tracks from the last pending playlist\n"
+            f"`{p}settc` — Restrict bot commands to this channel *(owner only)*\n"
+            f"`{p}shutdown` — Shut down the bot *(owner only)*"
+        )
+
 
 def _start_auto_next(bot, channel_id):
     """Cancel any existing auto-next chain and start a fresh one."""
+    bot.current_text_channel_id = channel_id
     if bot._auto_next_task and not bot._auto_next_task.done():
         bot._auto_next_task.cancel()
     # Increment generation so any surviving zombie tasks self-terminate

@@ -51,6 +51,8 @@ class MusicBot(fluxer.Bot):
         self.queue = TrackQueue()
         self.voice_states: dict[str, str] = {}  # user_id -> channel_id
         self.current_guild_id: str | None = None
+        self.current_voice_channel_id: str | None = None
+        self.current_text_channel_id: str | None = None
         self.in_voice = False
         self.voice_ready = asyncio.Event()
         self.pending_playlists: dict = {}  # message_id -> playlist info
@@ -71,6 +73,7 @@ class MusicBot(fluxer.Bot):
 
     async def send_voice_state_update(self, guild_id: str, channel_id: str | None):
         """Send opcode 4 to join/leave a voice channel."""
+        self.current_voice_channel_id = channel_id
         payload = GatewayPayload(
             op=GatewayOpcode.VOICE_STATE_UPDATE,
             d={
@@ -95,6 +98,42 @@ def main():
     from commands import register_commands, handle_playlist_reaction
     register_commands(bot)
 
+    async def _handle_empty_channel(bot):
+        if not bot.in_voice or not bot.current_voice_channel_id:
+            return
+        # Re-check in case someone rejoined between scheduling and running
+        users_in_channel = sum(
+            1 for cid in bot.voice_states.values()
+            if cid == bot.current_voice_channel_id
+        )
+        if users_in_channel > 1:
+            return
+
+        guild_id = bot.current_guild_id
+        text_channel_id = bot.current_text_channel_id
+
+        # Stop playback and clear queue
+        bot.queue.clear()
+        bot.player.stop_playback()
+        # Invalidate auto-next chain
+        bot._auto_next_gen = getattr(bot, '_auto_next_gen', 0) + 1
+        if bot._auto_next_task and not bot._auto_next_task.done():
+            bot._auto_next_task.cancel()
+            bot._auto_next_task = None
+
+        # Leave voice
+        bot.in_voice = False
+        bot.current_guild_id = None
+        if guild_id:
+            await bot.send_voice_state_update(guild_id, None)
+        await bot.player.disconnect()
+
+        if text_channel_id:
+            await bot._http.send_message(
+                text_channel_id,
+                content="Everyone left the voice channel. Queue cleared and playback stopped.",
+            )
+
     @bot.event
     async def on_ready():
         print(f"[main] Ready as {bot.user}")
@@ -112,6 +151,14 @@ def main():
                 bot.voice_states[str(user_id)] = str(channel_id)
             else:
                 bot.voice_states.pop(str(user_id), None)
+
+        if bot.in_voice and bot.current_voice_channel_id:
+            users_in_channel = sum(
+                1 for cid in bot.voice_states.values()
+                if cid == bot.current_voice_channel_id
+            )
+            if users_in_channel <= 1:  # only bot (or nobody) remains
+                asyncio.create_task(_handle_empty_channel(bot))
 
     @bot.on("voice_server_update")
     async def on_voice_server_update(data: dict):
