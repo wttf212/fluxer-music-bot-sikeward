@@ -11,6 +11,13 @@ from guild_settings import get_allowed_channel, set_allowed_channel
 PLAYLIST_EMOJI = "\u2705"  # ✅
 
 
+def _np_footer(bot) -> str:
+    """Bitrate info line appended to every Now Playing notification."""
+    kbps = bot.player._audio_bitrate // 1000
+    p = bot.command_prefix
+    return f"\n-# Audio: **{kbps} kbps** · `{p}bitrate <kbps>` to change"
+
+
 async def check_channel(bot, message: Message) -> bool:
     """Check if command is in the allowed channel. Deletes message and notifies if not."""
     guild_id = str(message.guild_id) if message.guild_id else None
@@ -176,7 +183,7 @@ def register_commands(bot):
 
             if not remaining_tracks:
                 await status_msg.edit(
-                    content=f"▶️ Now playing: **{title}** (from **{playlist_title}**)"
+                    content=f"▶️ Now playing: **{title}** (from **{playlist_title}**){_np_footer(bot)}"
                 )
                 _start_auto_next(bot, channel_id)
                 return
@@ -188,6 +195,7 @@ def register_commands(bot):
                     f"▶️ Now playing: **{title}**\n"
                     f"📋 **{playlist_title}** has **{count}** more tracks.\n"
                     f"React ✅ or type `{bot.command_prefix}loadall` to add them to the queue."
+                    f"{_np_footer(bot)}"
                 )
             )
 
@@ -256,13 +264,14 @@ def register_commands(bot):
             bot.queue.add(track)
             await message.reply(f"Added to queue: **{query}**")
         else:
-            await message.reply(f"Now playing: **{query}**")
+            status_msg = await message.reply("▶️ Resolving...")
             try:
                 title = await bot.player.play(query)
                 track.title = title
+                await status_msg.edit(content=f"▶️ Now playing: **{title}**{_np_footer(bot)}")
                 _start_auto_next(bot, channel_id)
             except Exception as e:
-                await message.reply(f"Error playing track: {e}")
+                await status_msg.edit(content=f"Error playing track: {e}")
 
     @bot.command()
     async def stop(message: Message):
@@ -326,13 +335,13 @@ def register_commands(bot):
     @bot.command()
     async def loadall(message: Message):
         """Load remaining playlist tracks from the most recent pending playlist in this channel."""
-        if not await check_channel(bot, message):
-            return
-
         channel_id = str(message.channel_id)
         msg_id = bot.pending_playlists.get(f"channel_{channel_id}")
         if not msg_id:
             await message.reply("No pending playlist to load.")
+            return
+
+        if not await check_channel(bot, message):
             return
 
         pending = bot.pending_playlists.pop(msg_id, None)
@@ -358,10 +367,39 @@ def register_commands(bot):
                 try:
                     title = await bot.player.play(next_track.query)
                     next_track.title = title
-                    await bot._http.send_message(channel_id_str, content=f"▶️ Now playing: **{title}**")
+                    await bot._http.send_message(channel_id_str, content=f"▶️ Now playing: **{title}**{_np_footer(bot)}")
                     _start_auto_next(bot, channel_id_str)
                 except Exception as e:
                     await bot._http.send_message(channel_id_str, content=f"Error playing track: {e}")
+
+    @bot.command()
+    async def bitrate(message: Message):
+        if not await check_channel(bot, message):
+            return
+
+        arg = message.content[len(bot.command_prefix) + len("bitrate"):].strip()
+        current_kbps = bot.player._audio_bitrate // 1000
+
+        if not arg:
+            await message.reply(f"Current audio bitrate: **{current_kbps} kbps**. Usage: `{bot.command_prefix}bitrate <1-510>` (max 510 kbps)")
+            return
+
+        try:
+            kbps = int(arg)
+        except ValueError:
+            await message.reply(f"Invalid value — provide a number between 1 and 510. Usage: `{bot.command_prefix}bitrate <kbps>`")
+            return
+
+        if kbps > 510:
+            await message.reply(f"**{kbps} kbps** is too high. The maximum is **510 kbps** (Opus stereo limit). Try `{bot.command_prefix}bitrate 128` for standard quality or `{bot.command_prefix}bitrate 510` for maximum.")
+            return
+
+        if kbps < 1:
+            await message.reply("Bitrate must be at least 1 kbps.")
+            return
+
+        await bot.player.set_bitrate(kbps)
+        await message.reply(f"Audio bitrate set to **{kbps} kbps**.")
 
     @bot.command()
     async def shutdown(message: Message):
@@ -391,6 +429,7 @@ def register_commands(bot):
             f"`{p}stop` — Stop playback, clear queue, and leave voice\n"
             f"`{p}queue` — Show the current queue\n"
             f"`{p}loadall` — Load all remaining tracks from the last pending playlist\n"
+            f"`{p}bitrate [kbps]` — Show or set audio encoding bitrate (1–510 kbps)\n"
             f"`{p}settc` — Restrict bot commands to this channel *(owner only)*\n"
             f"`{p}shutdown` — Shut down the bot *(owner only)*"
         )
@@ -429,7 +468,7 @@ async def _auto_next(bot, channel_id, generation):
                 title = await bot.player.play(next_track.query)
                 next_track.title = title
                 consecutive_errors = 0  # reset on success
-                await bot._http.send_message(channel_id, content=f"Now playing: **{title}**")
+                await bot._http.send_message(channel_id, content=f"▶️ Now playing: **{title}**{_np_footer(bot)}")
             except Exception as e:
                 consecutive_errors += 1
                 await bot._http.send_message(channel_id, content=f"Error playing track, skipping: {e}")

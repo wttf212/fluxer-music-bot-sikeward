@@ -86,7 +86,10 @@ python main.py
 | `!skip` | Skip the current track |
 | `!stop` | Stop playback, clear queue, and leave voice |
 | `!queue` | Show the current queue |
-| `!shutdown` | Safely shut down the bot |
+| `!loadall` | Load all remaining tracks from the last pending playlist |
+| `!bitrate [kbps]` | Show or set audio encoding bitrate (1–510 kbps, default 128) |
+| `!settc` | Restrict bot commands to this channel *(owner only)* |
+| `!shutdown` | Safely shut down the bot *(owner only)* |
 
 ## How It Works
 

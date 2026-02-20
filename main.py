@@ -71,6 +71,28 @@ class MusicBot(fluxer.Bot):
             print(f"[main] Loaded {loaded} voice states for guild {data.get('id')}")
         await super()._dispatch(event_name, data)
 
+    async def _process_commands(self, message) -> None:
+        """Override to fix partial-match false positives and reply on unknown commands."""
+        if message.author.bot:
+            return
+        if not message.content.startswith(self.command_prefix):
+            return
+
+        content = message.content[len(self.command_prefix):]
+        for cmd, handler in self._commands.items():
+            # Require exact match or command followed by a space (prevents !skipping → !skip)
+            if content == cmd or content.startswith(cmd + " "):
+                if handler:
+                    try:
+                        await handler(message)
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).exception("Error in command '%s'", cmd)
+                        print(f"[commands] Exception in '{cmd}': {e}")
+                return
+
+        await message.reply(f"Unknown command. Type `{self.command_prefix}help` for available commands.")
+
     async def send_voice_state_update(self, guild_id: str, channel_id: str | None):
         """Send opcode 4 to join/leave a voice channel."""
         self.current_voice_channel_id = channel_id

@@ -183,6 +183,8 @@ class AudioPlayer:
         self._frame_ms = config["audio"]["frame_duration_ms"]
         self._ffmpeg_path = _find_ffmpeg(config.get("ffmpeg_path", "ffmpeg"))
         self._debug = config.get("debug", False)
+        self._audio_bitrate: int = config["audio"].get("bitrate", 510) * 1000
+        self._publication: rtc.LocalTrackPublication | None = None
 
         if self._debug:
             print(f"[debug][player] Initialized AudioPlayer")
@@ -204,6 +206,7 @@ class AudioPlayer:
                     print(f"[debug][player] Error disconnecting old room: {e}")
             self._room = None
             self._source = None
+            self._publication = None
 
         self._room = rtc.Room()
         await self._room.connect(endpoint, token)
@@ -218,10 +221,26 @@ class AudioPlayer:
         self._source = rtc.AudioSource(self._sample_rate, self._channels)
         track = rtc.LocalAudioTrack.create_audio_track("music", self._source)
         options = rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE)
-        await self._room.local_participant.publish_track(track, options)
-        print(f"[audio] Audio track published")
+        options.audio_encoding.max_bitrate = self._audio_bitrate
+        self._publication = await self._room.local_participant.publish_track(track, options)
+        print(f"[audio] Audio track published at {self._audio_bitrate // 1000} kbps")
         if self._debug:
             print(f"[debug][player] Audio source created: rate={self._sample_rate}, channels={self._channels}")
+
+    async def set_bitrate(self, kbps: int):
+        """Update the Opus encoding bitrate hint. Republishes the track if already connected."""
+        self._audio_bitrate = kbps * 1000
+        if self._room is None or self._source is None:
+            return  # will take effect on next publish
+        if self._publication is not None:
+            try:
+                await self._room.local_participant.unpublish_track(self._publication.sid)
+            except Exception as e:
+                if self._debug:
+                    print(f"[debug][player] Error unpublishing track: {e}")
+        self._source = None
+        self._publication = None
+        await self._ensure_audio_track()
 
     async def play(self, url_or_query: str) -> str:
         """Resolve a URL/query and start playback. Returns track title."""
