@@ -57,6 +57,22 @@ class MusicBot(fluxer.Bot):
         self.voice_ready = asyncio.Event()
         self.pending_playlists: dict = {}  # message_id -> playlist info
         self._auto_next_task: asyncio.Task | None = None  # prevent duplicate chains
+        self._empty_channel_task: asyncio.Task | None = None  # 1-min leave timer
+
+    async def start(self, token: str) -> None:
+        """Override to retry the initial API connection indefinitely on failure."""
+        attempt = 0
+        while True:
+            attempt += 1
+            self._closed = False
+            try:
+                await super().start(token)
+                return
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception as e:
+                print(f"[main] API connection failed (attempt {attempt}): {e}. Retrying in 5s...")
+                await asyncio.sleep(5)
 
     async def _dispatch(self, event_name: str, data: Any) -> None:
         """Intercept GUILD_CREATE to capture initial voice states before fluxer processes it."""
@@ -120,6 +136,41 @@ def main():
     from commands import register_commands, handle_playlist_reaction
     register_commands(bot)
 
+    async def _do_empty_leave(bot, message: str):
+        """Shared teardown: stop playback, clear queue, disconnect, and send a message."""
+        guild_id = bot.current_guild_id
+        text_channel_id = bot.current_text_channel_id
+
+        bot.queue.clear()
+        bot.player.stop_playback()
+        bot._auto_next_gen = getattr(bot, '_auto_next_gen', 0) + 1
+        if bot._auto_next_task and not bot._auto_next_task.done():
+            bot._auto_next_task.cancel()
+            bot._auto_next_task = None
+        bot._empty_channel_task = None
+
+        bot.in_voice = False
+        bot.current_guild_id = None
+        if guild_id:
+            await bot.send_voice_state_update(guild_id, None)
+        await bot.player.disconnect()
+
+        if text_channel_id:
+            await bot._http.send_message(text_channel_id, content=message)
+
+    async def _leave_after_timeout(bot):
+        """Wait 1 minute, then leave if the channel is still empty."""
+        await asyncio.sleep(60)
+        if not bot.in_voice or not bot.current_voice_channel_id:
+            return
+        users_in_channel = sum(
+            1 for cid in bot.voice_states.values()
+            if cid == bot.current_voice_channel_id
+        )
+        if users_in_channel > 1:
+            return
+        await _do_empty_leave(bot, "No one in the voice channel for 1 minute. Leaving.")
+
     async def _handle_empty_channel(bot):
         if not bot.in_voice or not bot.current_voice_channel_id:
             return
@@ -131,30 +182,13 @@ def main():
         if users_in_channel > 1:
             return
 
-        guild_id = bot.current_guild_id
-        text_channel_id = bot.current_text_channel_id
+        # If music is playing, start a 1-minute timeout instead of leaving immediately
+        if bot.player.is_playing:
+            if not (bot._empty_channel_task and not bot._empty_channel_task.done()):
+                bot._empty_channel_task = asyncio.create_task(_leave_after_timeout(bot))
+            return
 
-        # Stop playback and clear queue
-        bot.queue.clear()
-        bot.player.stop_playback()
-        # Invalidate auto-next chain
-        bot._auto_next_gen = getattr(bot, '_auto_next_gen', 0) + 1
-        if bot._auto_next_task and not bot._auto_next_task.done():
-            bot._auto_next_task.cancel()
-            bot._auto_next_task = None
-
-        # Leave voice
-        bot.in_voice = False
-        bot.current_guild_id = None
-        if guild_id:
-            await bot.send_voice_state_update(guild_id, None)
-        await bot.player.disconnect()
-
-        if text_channel_id:
-            await bot._http.send_message(
-                text_channel_id,
-                content="Everyone left the voice channel. Queue cleared and playback stopped.",
-            )
+        await _do_empty_leave(bot, "Everyone left the voice channel. Leaving.")
 
     @bot.event
     async def on_ready():
@@ -181,6 +215,10 @@ def main():
             )
             if users_in_channel <= 1:  # only bot (or nobody) remains
                 asyncio.create_task(_handle_empty_channel(bot))
+            elif bot._empty_channel_task and not bot._empty_channel_task.done():
+                # Someone rejoined — cancel the pending leave timer
+                bot._empty_channel_task.cancel()
+                bot._empty_channel_task = None
 
     @bot.on("voice_server_update")
     async def on_voice_server_update(data: dict):

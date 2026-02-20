@@ -274,6 +274,29 @@ def register_commands(bot):
                 await status_msg.edit(content=f"Error playing track: {e}")
 
     @bot.command()
+    async def pause(message: Message):
+        if not await check_channel(bot, message):
+            return
+        if not bot.player.is_playing:
+            await message.reply("Nothing is playing.")
+            return
+        if bot.player.is_paused:
+            await message.reply("Already paused.")
+            return
+        bot.player.pause()
+        await message.reply(f"Paused: **{bot.player.current_track_title}**")
+
+    @bot.command()
+    async def resume(message: Message):
+        if not await check_channel(bot, message):
+            return
+        if not bot.player.is_paused:
+            await message.reply("Not paused.")
+            return
+        bot.player.resume()
+        await message.reply(f"Resumed: **{bot.player.current_track_title}**")
+
+    @bot.command()
     async def stop(message: Message):
         if not await check_channel(bot, message):
             return
@@ -425,6 +448,8 @@ def register_commands(bot):
         await message.reply(
             f"**Available commands:**\n"
             f"`{p}play <url or search>` — Play a track or playlist (join voice first)\n"
+            f"`{p}pause` — Pause playback\n"
+            f"`{p}resume` — Resume paused playback\n"
             f"`{p}skip` — Skip the current track\n"
             f"`{p}stop` — Stop playback, clear queue, and leave voice\n"
             f"`{p}queue` — Show the current queue\n"
@@ -476,6 +501,24 @@ async def _auto_next(bot, channel_id, generation):
                     await bot._http.send_message(channel_id, content=f"Too many consecutive errors ({MAX_CONSECUTIVE_ERRORS}), stopping auto-play.")
                     break
                 continue  # try the next track instead of dying
+
+        # Queue drained — leave if channel is empty
+        if bot.in_voice and bot.current_voice_channel_id and getattr(bot, '_auto_next_gen', 0) == generation:
+            users_in_channel = sum(
+                1 for cid in bot.voice_states.values()
+                if cid == bot.current_voice_channel_id
+            )
+            if users_in_channel <= 1:  # only bot (or nobody) remains
+                guild_id = bot.current_guild_id
+                bot.in_voice = False
+                bot.current_guild_id = None
+                if guild_id:
+                    await bot.send_voice_state_update(guild_id, None)
+                await bot.player.disconnect()
+                await bot._http.send_message(
+                    channel_id,
+                    content="Queue finished and no one is in the voice channel. Leaving.",
+                )
     except asyncio.CancelledError:
         pass  # chain cancelled by _start_auto_next or !stop
 

@@ -176,6 +176,7 @@ class AudioPlayer:
         self._source: rtc.AudioSource | None = None
         self._play_task: asyncio.Task | None = None
         self.is_playing = False
+        self.is_paused = False
         self.current_track_title: str | None = None
 
         self._sample_rate = config["audio"]["sample_rate"]
@@ -332,6 +333,10 @@ class AudioPlayer:
             total_bytes_read = 0
             try:
                 while self.is_playing and self._ffmpeg and self._ffmpeg.poll() is None:
+                    while self.is_paused and self.is_playing:
+                        await asyncio.sleep(0.05)
+                    if not self.is_playing:
+                        break
                     data = await loop.run_in_executor(
                         None, self._ffmpeg.stdout.read, bytes_per_frame
                     )
@@ -376,11 +381,20 @@ class AudioPlayer:
         self._play_task = asyncio.create_task(stream_loop())
         return title
 
+    def pause(self):
+        """Pause playback without stopping ffmpeg."""
+        self.is_paused = True
+
+    def resume(self):
+        """Resume paused playback."""
+        self.is_paused = False
+
     def stop_playback(self):
         """Stop ffmpeg and cancel the streaming task."""
         if self._debug:
             print(f"[debug][player] stop_playback() called")
         self.is_playing = False
+        self.is_paused = False
         self.current_track_title = None
         if self._ffmpeg:
             try:

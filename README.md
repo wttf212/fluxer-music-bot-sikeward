@@ -83,6 +83,8 @@ python main.py
 | Command | Description |
 |---|---|
 | `!play <url or search>` | Play a YouTube URL or search query |
+| `!pause` | Pause playback |
+| `!resume` | Resume paused playback |
 | `!skip` | Skip the current track |
 | `!stop` | Stop playback, clear queue, and leave voice |
 | `!queue` | Show the current queue |
