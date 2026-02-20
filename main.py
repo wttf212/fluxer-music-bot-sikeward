@@ -156,6 +156,8 @@ def main():
         await bot.player.disconnect()
 
         if text_channel_id:
+            from commands import update_channel_topic
+            await update_channel_topic(bot, text_channel_id, "Queue is empty.")
             await bot._http.send_message(text_channel_id, content=message)
 
     async def _leave_after_timeout(bot):

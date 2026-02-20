@@ -11,11 +11,31 @@ from guild_settings import get_allowed_channel, set_allowed_channel
 PLAYLIST_EMOJI = "\u2705"  # ✅
 
 
-def _np_footer(bot) -> str:
-    """Bitrate info line appended to every Now Playing notification."""
+def create_np_embed(bot, title: str, extra_desc: str = "") -> dict:
+    """Creates a dictionary representing an embed for Now Playing."""
     kbps = bot.player._audio_bitrate // 1000
     p = bot.command_prefix
-    return f"\n-# Audio: **{kbps} kbps** · `{p}bitrate <kbps>` to change"
+    
+    desc = f"**{title}**"
+    if extra_desc:
+        desc += f"\n\n{extra_desc}"
+        
+    return {
+        "title": "▶️ Now Playing",
+        "description": desc,
+        "color": 0x3498db,
+        "footer": {
+            "text": f"Audio: {kbps} kbps • {p}bitrate <kbps> to change"
+        }
+    }
+
+
+async def update_channel_topic(bot, channel_id: str, topic_text: str):
+    """Updates the textual channel topic."""
+    try:
+        await bot._http.modify_channel(channel_id, topic=topic_text)
+    except Exception as e:
+        print(f"[commands] Failed to update channel topic: {e}")
 
 
 async def check_channel(bot, message: Message) -> bool:
@@ -182,22 +202,21 @@ def register_commands(bot):
             channel_id = str(message.channel_id)
 
             if not remaining_tracks:
-                await status_msg.edit(
-                    content=f"▶️ Now playing: **{title}** (from **{playlist_title}**){_np_footer(bot)}"
-                )
+                embed = create_np_embed(bot, title, f"From playlist: **{playlist_title}**")
+                await bot._http.edit_message(channel_id, status_msg.id, content="", embeds=[embed])
+                await update_channel_topic(bot, channel_id, f"▶️ Now playing: {title}")
                 _start_auto_next(bot, channel_id)
                 return
 
             # Show offer to load the rest
             count = len(remaining_tracks)
-            await status_msg.edit(
-                content=(
-                    f"▶️ Now playing: **{title}**\n"
-                    f"📋 **{playlist_title}** has **{count}** more tracks.\n"
-                    f"React ✅ or type `{bot.command_prefix}loadall` to add them to the queue."
-                    f"{_np_footer(bot)}"
-                )
+            extra = (
+                f"📋 **{playlist_title}** has **{count}** more tracks.\n"
+                f"React ✅ or type `{bot.command_prefix}loadall` to add them to the queue."
             )
+            embed = create_np_embed(bot, title, extra)
+            await bot._http.edit_message(channel_id, status_msg.id, content="", embeds=[embed])
+            await update_channel_topic(bot, channel_id, f"▶️ Now playing: {title}")
 
             # Try adding ✅ reaction
             try:
@@ -228,13 +247,14 @@ def register_commands(bot):
                     bot.pending_playlists.pop(f"channel_{ch_id}", None)
                 if removed:
                     try:
+                        extra = (
+                            f"📋 **{playlist_title}** had **{count}** more tracks.\n"
+                            f"~~React ✅ or type `{bot.command_prefix}loadall`~~ *(expired)*"
+                        )
+                        embed = create_np_embed(bot, title, extra)
                         await bot._http.edit_message(
                             ch_id, msg_id,
-                            content=(
-                                f"▶️ Now playing: **{title}**\n"
-                                f"📋 **{playlist_title}** had **{count}** more tracks.\n"
-                                f"~~React ✅ or type `{bot.command_prefix}loadall`~~ *(expired)*"
-                            )
+                            content="", embeds=[embed]
                         )
                     except Exception:
                         pass
@@ -268,8 +288,10 @@ def register_commands(bot):
             try:
                 title = await bot.player.play(query)
                 track.title = title
-                await status_msg.edit(content=f"▶️ Now playing: **{title}**{_np_footer(bot)}")
-                _start_auto_next(bot, channel_id)
+                embed = create_np_embed(bot, title)
+                await bot._http.edit_message(channel_id, status_msg.id, content="", embeds=[embed])
+                await update_channel_topic(bot, str(channel_id), f"▶️ Now playing: {title}")
+                _start_auto_next(bot, str(channel_id))
             except Exception as e:
                 await status_msg.edit(content=f"Error playing track: {e}")
 
@@ -309,6 +331,7 @@ def register_commands(bot):
         await bot.player.disconnect()
         bot.in_voice = False
         bot.current_guild_id = None
+        await update_channel_topic(bot, str(message.channel_id), "Queue is empty.")
         await message.reply("Stopped playback and left voice.")
 
     @bot.command()
@@ -329,11 +352,14 @@ def register_commands(bot):
             try:
                 title = await bot.player.play(next_track.query)
                 next_track.title = title
-                await message.reply(f"Skipped. Now playing: **{title}**")
+                embed = create_np_embed(bot, title)
+                await bot._http.send_message(channel_id, content="Skipped.", embeds=[embed])
+                await update_channel_topic(bot, str(channel_id), f"▶️ Now playing: {title}")
                 _start_auto_next(bot, channel_id)
             except Exception as e:
                 await message.reply(f"Error playing next track: {e}")
         else:
+            await update_channel_topic(bot, str(channel_id), "Queue is empty.")
             await message.reply("Skipped. Queue is empty.")
 
     @bot.command()
@@ -390,7 +416,9 @@ def register_commands(bot):
                 try:
                     title = await bot.player.play(next_track.query)
                     next_track.title = title
-                    await bot._http.send_message(channel_id_str, content=f"▶️ Now playing: **{title}**{_np_footer(bot)}")
+                    embed = create_np_embed(bot, title)
+                    await bot._http.send_message(channel_id_str, content="", embeds=[embed])
+                    await update_channel_topic(bot, channel_id_str, f"▶️ Now playing: {title}")
                     _start_auto_next(bot, channel_id_str)
                 except Exception as e:
                     await bot._http.send_message(channel_id_str, content=f"Error playing track: {e}")
@@ -439,6 +467,7 @@ def register_commands(bot):
         if guild_id:
             await bot.send_voice_state_update(guild_id, None)
         await bot.player.disconnect()
+        await update_channel_topic(bot, str(message.channel_id), "Queue is empty.")
         print("[main] Shutdown requested via command.")
         os._exit(0)
 
@@ -488,12 +517,15 @@ async def _auto_next(bot, channel_id, generation):
                 break  # something else started playing
             next_track = bot.queue.next()
             if not next_track:
+                await update_channel_topic(bot, channel_id, "Queue is empty.")
                 break  # queue empty
             try:
                 title = await bot.player.play(next_track.query)
                 next_track.title = title
                 consecutive_errors = 0  # reset on success
-                await bot._http.send_message(channel_id, content=f"▶️ Now playing: **{title}**{_np_footer(bot)}")
+                embed = create_np_embed(bot, title)
+                await bot._http.send_message(channel_id, content="", embeds=[embed])
+                await update_channel_topic(bot, channel_id, f"▶️ Now playing: {title}")
             except Exception as e:
                 consecutive_errors += 1
                 await bot._http.send_message(channel_id, content=f"Error playing track, skipping: {e}")
